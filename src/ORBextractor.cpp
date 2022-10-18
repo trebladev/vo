@@ -279,6 +279,133 @@ static int bit_pattern_31_[256*4] =
     };
 
 /**
+ *
+ * @param allKeypoints this vector restore all keypoints in pyramid, every second vector restore keypoints in one level
+ */
+void ORBextractor::ComputeKeyPointsOctTree(std::vector<std::vector<cv::KeyPoint>> &allKeypoints) {
+
+  allKeypoints.resize(nlevels); // init vector of every level
+
+  const float W = 30; // image's cell size
+
+  // for every level
+  for (int level = 0; level < nlevels; ++level){
+
+    // set keypoint border (include expend 3)
+    const int minBorderX = EDGE_THRESHOLD-3;
+    const int minBorderY = minBorderX;
+    const int maxBorderX = mvImagePyramid[level].cols - EDGE_THRESHOLD+3;
+    const int maxBorderY = mvImagePyramid[level].rows - EDGE_THRESHOLD+3;
+
+    vector<cv::KeyPoint> vToDistributeKeys; // restore keypoint to distribute
+    vToDistributeKeys.reserve(nfeatures*10); // pre-distribute memory
+
+    // image range to compute keypoint
+    const float width = (maxBorderX - minBorderX);
+    const float height = (maxBorderY - minBorderY);
+
+    // number of cols and rows in current layer
+    const int nCols = width/W;
+    const int nRows = height/W;
+
+    // range of cells
+    const int wCell = ceil(width/nCols);
+    const int hCell = ceil(height/nRows);
+
+    // traverse line
+    for(int i=0; i<nCols; ++i){
+
+      // compute first row point
+      const float iniY = minBorderY+i*hCell;
+      float maxY = iniY + hCell +6;
+
+      // if the first row is beyond valid image border, go to next
+      if(iniY>=maxBorderY-3){
+        continue;
+      }
+
+      // if cell range > image border
+      if(maxY>maxBorderY){
+        maxY = maxBorderY;
+      }
+
+      // traverse cols
+      for(int j=0; j<nCols; ++j){
+        const float iniX = minBorderX + j*wCell;
+        float maxX = iniX+wCell+6;
+        if(iniX>=maxBorderX-3){
+          continue;
+        }
+        if(maxX>maxBorderX){
+          maxX = maxBorderX;
+        }
+
+        // restore keypoint in cell
+        vector<cv::KeyPoint> vKeysCell;
+
+        // use opencv to extract fast keypoint
+        FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX), // image of cell
+             vKeysCell, // vector to restore keypoint
+             iniThFAST, // threshold of fast keypoint
+             true); // enable non-maximum suppression
+        // if cannot extract keypoint
+        if(vKeysCell.empty()){
+          // reduce the threshold
+          FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
+               vKeysCell,
+               minThFAST,   // lower threshold
+               true);
+        }
+
+        // when extract keypoint
+        if(!vKeysCell.empty()){
+
+          // traverse cols
+          for(vector<cv::KeyPoint>::iterator vit=vKeysCell.begin();vit!=vKeysCell.end();++vit){
+            // convert coordinate from cell to world
+            (*vit).pt.x+=j*wCell;
+            (*vit).pt.y+=i*hCell;
+            // push vit into vector which wait for distribute
+            vToDistributeKeys.push_back(*vit);
+          }// convert the keypoints coordinate and storage it
+        }
+      }
+    }
+
+    // define a keypoint vector for this level
+    vector<KeyPoint> & keypoints = allKeypoints[level];
+    keypoints.reserve(nfeatures);
+
+    // use octtree to distribute keypoint
+    // return the remain keypoint
+    // TODO the points coordinate is at radius expend but the border's coordinate is at edge expend. waiting for solving this bug
+    keypoints = DistributeOctTree(vToDistributeKeys,                 // keypoint for this level, waiting for distribute
+                                  minBorderX,maxBorderX,  // range of this camera
+                                  minBorderY,minBorderY,
+                                  mnFeaturesPerLevel[level], // Expectation number of keypoint
+                                  level);                            // level of this layer
+    // PATCH_SIZE means the last level, so it needs scale
+    const int scalePatchSize = PATCH_SIZE*mvScaleFactor[level];
+
+    // number of distributed keypoint
+    const int nkps = keypoints.size();
+    // traverse keypoints and restore its coordinate under image
+    for( int i=0; i<nkps ; ++i){
+      // convert to edge expend coordinate
+      keypoints[i].pt.x+=minBorderX;
+      keypoints[i].pt.y+=minBorderY;
+      // note the level of pyramid
+      keypoints[i].octave=level;
+
+      keypoints[i].size = scalePatchSize;
+    }
+
+    // TODO compute Orientation
+
+  }
+}
+
+/**
  * @brief divide the node to four node and recover the keypoint distribution in node
  * @param n1
  * @param n2
