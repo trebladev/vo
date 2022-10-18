@@ -278,6 +278,82 @@ static int bit_pattern_31_[256*4] =
         -1,-6, 0,-11/*mean (0.127148), correlation (0.547401)*/
     };
 
+/**
+ * @brief divide the node to four node and recover the keypoint distribution in node
+ * @param n1
+ * @param n2
+ * @param n3
+ * @param n4
+ */
+void ExtractorNode::DivideNode(ExtractorNode &n1, ExtractorNode &n2, ExtractorNode &n3, ExtractorNode &n4) {
+
+  const int halfX = ceil(static_cast<float>(UR.x-UL.x)/2);
+  const int halfY = ceil(static_cast<float>(BR.y-UL.y)/2);
+
+  // Define boundaries of childs
+  // divide an image range to four small range
+  // n1 restore boundaries of upper left
+  n1.UL = UL;
+  n1.UR = cv::Point2i(UL.x+halfX,UL.y);
+  n1.BL = cv::Point2i(UL.x,UL.y+halfY);
+  n1.BR = cv::Point2i(UL.x+halfX,UL.y+halfY);
+  n1.vKeys.reserve(vKeys.size());
+
+  // n2 restore boundaries of upper right
+  n2.UL = n1.UR;
+  n2.UR = UR;
+  n2.BL = n1.BR;
+  n2.BR = cv::Point2i(UR.x,UL.y+halfY);
+  n2.vKeys.reserve(vKeys.size());
+
+  // n3 restore boundaries of bottom left
+  n3.UL = n1.BL;
+  n3.UR = n1.BR;
+  n3.BL = BL;
+  n3.BR = cv::Point2i(n1.BR.x,BL.y);
+  n3.vKeys.reserve(vKeys.size());
+
+  // n4 restore boundaries of bottom right
+  n4.UL = n3.UR;
+  n4.UR = n2.BR;
+  n4.BL = n3.BR;
+  n4.BR = BR;
+  n4.vKeys.reserve(vKeys.size());
+
+  //Associate points to childs
+  // extractor keypoint in current node and distribute to n* node
+  for(size_t i=0;i<vKeys.size();i++)
+  {
+    // get the keypoint
+    const cv::KeyPoint &kp = vKeys[i];
+    // determine the keypoint belong to which region and restore it
+    //TODO CHECK BUG 这里也是直接进行比较的，但是特征点的坐标是在“半径扩充图像”坐标系下的，而节点区域的坐标则是在“边缘扩充图像”坐标系下的
+    if(kp.pt.x<n1.UR.x)
+    {
+      if(kp.pt.y<n1.BR.y)
+        n1.vKeys.push_back(kp);
+      else
+        n3.vKeys.push_back(kp);
+    }
+    else if(kp.pt.y<n1.BR.y)
+      n2.vKeys.push_back(kp);
+    else
+      n4.vKeys.push_back(kp);
+  }
+
+  // determine whether the node can split
+  // if the node's keypoint less than 1, set flag bNoMore false
+  if(n1.vKeys.size()==1)
+    n1.bNoMore = true;
+  if(n2.vKeys.size()==1)
+    n2.bNoMore = true;
+  if(n3.vKeys.size()==1)
+    n3.bNoMore = true;
+  if(n4.vKeys.size()==1)
+    n4.bNoMore = true;
+
+}
+
 void ORBextractor::ComputePyramid(cv::Mat image) {
 
   // let image scale like pyramid
