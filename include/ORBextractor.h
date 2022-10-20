@@ -75,7 +75,7 @@ class ORBextractor {
                                               const int &maxX,
                                               const int &minY,
                                               const int &maxY,
-                                              const int &nFeatures,
+                                              const int &N,
                                               const int &level);
 
   void ComputeKeyPointsOld(std::vector<std::vector<cv::KeyPoint> > &allKeypoints);

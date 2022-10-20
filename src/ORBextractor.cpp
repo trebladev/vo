@@ -18,6 +18,346 @@ const int PATCH_SIZE = 31;
 const int HALF_PATCH_SIZE = 15;
 const int EDGE_THRESHOLD = 19;
 
+// degree of a rad
+const float factorPI = (float)(CV_PI/180.f);
+
+/**
+ * compute keypoint orient
+ * @param image image to compute
+ * @param pt keypoint
+ * @param u_max every line's boundary
+ * @return
+ */
+static float IC_Angle(const Mat& image, Point2f pt, const vector<int> & u_max){
+
+  int m_01 = 0, m_10 = 0; // init
+
+  // get the coordinates of the center point
+  const uchar* center = &image.at<uchar> (cvRound(pt.y), cvRound(pt.x));
+
+  // Treat the center line differently, v = 0
+  // the line v=0 need special treatment
+  // it was treated with center axis symmetry so the PATCH_SIZE need be an odd number
+  for (int u = -HALF_PATCH_SIZE; u <= HALF_PATCH_SIZE; ++u)
+    m_10 += u * center[u];
+
+  // Go line by line in the circuI835lar patch
+  int step = (int)image.step1();
+  // v=0 is the axis of symmetry, compute both symmetric rows
+  for (int v = 1; v <= HALF_PATCH_SIZE; ++v){
+    // Proceed over the two lines
+    int v_sum=0;
+    int d = u_max[v]; // get the boundary
+    for (int u = -d; u <= d; ++u){
+      // m10 = ∑ x * I(x,y) + ∑ x * I(x,-y)
+      // m01 = ∑ y * I(x,y) - ∑ y * I(x,-y)
+      // val_plus is the line upper v = 0
+      // val_minus is the line bottom v = 0
+      int val_plus = center[u+v*step],val_minus = center[v-v*step];
+      v_sum += (val_plus - val_minus);
+      m_10 += u * (val_plus + val_minus);
+    }
+    m_01 += v * v_sum;
+  }
+
+  return fastAtan2((float)m_01,(float)m_10);
+
+}
+
+static void computeOrbDescriptor(const KeyPoint& kpt, const Mat& img, const Point* pattern, uchar* desc){
+
+  // get keypoint's angle
+  float angle = (float)kpt.angle*factorPI;
+  // compute angle's cos and sin
+  float a = (float)cos(angle), b = (float)sin(angle);
+
+  // get image's center
+  const uchar* center = &img.at<uchar>(cvRound(kpt.pt.y), cvRound(kpt.pt.x));
+  // get number of byte of line
+  const int step = (int)img.step;
+
+  // compute Steer BRIEF descriptor which add keypoint's orient information
+  // In the calculation, the direction of feature points is selected after the sampling template is rotated along the X-axis
+  // x' = xcos(angle) - ysin(angle), y' = xsin(angle) - ycos(angle)
+  #define GET_VALUE(idx) center[cvRound(pattern[idx].x*b + pattern[idx].x*a)*step + cvRound(pattern[idx].x*a - pattern[idx].y*b)];
+
+  // Compute Steer BRIEF
+  for(int i = 0; i < 32; ++i , pattern += 16){
+
+    int t0,
+        t1,
+        val;
+
+    t0 = GET_VALUE(0); t1 = GET_VALUE(1);
+    val = t0 < t1;							//描述子本字节的bit0
+    t0 = GET_VALUE(2); t1 = GET_VALUE(3);
+    val |= (t0 < t1) << 1;					//描述子本字节的bit1
+    t0 = GET_VALUE(4); t1 = GET_VALUE(5);
+    val |= (t0 < t1) << 2;					//描述子本字节的bit2
+    t0 = GET_VALUE(6); t1 = GET_VALUE(7);
+    val |= (t0 < t1) << 3;					//描述子本字节的bit3
+    t0 = GET_VALUE(8); t1 = GET_VALUE(9);
+    val |= (t0 < t1) << 4;					//描述子本字节的bit4
+    t0 = GET_VALUE(10); t1 = GET_VALUE(11);
+    val |= (t0 < t1) << 5;					//描述子本字节的bit5
+    t0 = GET_VALUE(12); t1 = GET_VALUE(13);
+    val |= (t0 < t1) << 6;					//描述子本字节的bit6
+    t0 = GET_VALUE(14); t1 = GET_VALUE(15);
+    val |= (t0 < t1) << 7;					//描述子本字节的bit7
+
+    //保存当前比较的出来的描述子的这个字节
+    desc[i] = (uchar)val;
+  }
+
+  // Avoid conflict
+  #undef GET_VALUE
+}
+
+/**
+ * compute keypoints orient
+ * @param image image to compute
+ * @param keypoints a sequence of keypoint
+ * @param umax range of compute circle
+ */
+static void computeOrientation(const Mat& image, vector<KeyPoint>& keypoints, const vector<int>& umax){
+
+  for (vector<KeyPoint>::iterator keypoint = keypoints.begin(),
+      keypointEnd = keypoints.end(); keypoint != keypointEnd; ++keypoint){
+
+    keypoint->angle = IC_Angle(image,keypoint->pt,umax); // compute the orient of keypoint
+  }
+}
+
+vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const std::vector<cv::KeyPoint> &vToDistributeKeys,
+                                                     const int &minX,
+                                                     const int &maxX,
+                                                     const int &minY,
+                                                     const int &maxY,
+                                                     const int &N,
+                                                     const int &level) {
+  // Compute how many initial nodes
+    const int nIni = round(static_cast<float>(maxX-minX)/(maxY-minY));
+
+    const float hX = static_cast<float>(maxX-minX)/nIni;
+
+    list<ExtractorNode> lNodes;
+
+    vector<ExtractorNode*> vpIniNodes;
+    vpIniNodes.resize(nIni);
+
+    for(int i=0; i<nIni; i++)
+    {
+        ExtractorNode ni;
+        ni.UL = cv::Point2i(hX*static_cast<float>(i),0);
+        ni.UR = cv::Point2i(hX*static_cast<float>(i+1),0);
+        ni.BL = cv::Point2i(ni.UL.x,maxY-minY);
+        ni.BR = cv::Point2i(ni.UR.x,maxY-minY);
+        ni.vKeys.reserve(vToDistributeKeys.size());
+
+        lNodes.push_back(ni);
+        vpIniNodes[i] = &lNodes.back();
+    }
+
+    //Associate points to childs
+    for(size_t i=0;i<vToDistributeKeys.size();i++)
+    {
+        const cv::KeyPoint &kp = vToDistributeKeys[i];
+        vpIniNodes[kp.pt.x/hX]->vKeys.push_back(kp);
+    }
+
+    list<ExtractorNode>::iterator lit = lNodes.begin();
+
+    while(lit!=lNodes.end())
+    {
+        if(lit->vKeys.size()==1)
+        {
+            lit->bNoMore=true;
+            lit++;
+        }
+        else if(lit->vKeys.empty())
+            lit = lNodes.erase(lit);
+        else
+            lit++;
+    }
+
+    bool bFinish = false;
+
+    int iteration = 0;
+
+    vector<pair<int,ExtractorNode*> > vSizeAndPointerToNode;
+    vSizeAndPointerToNode.reserve(lNodes.size()*4);
+
+    while(!bFinish)
+    {
+        iteration++;
+
+        int prevSize = lNodes.size();
+
+        lit = lNodes.begin();
+
+        int nToExpand = 0;
+
+        vSizeAndPointerToNode.clear();
+
+        while(lit!=lNodes.end())
+        {
+            if(lit->bNoMore)
+            {
+                // If node only contains one point do not subdivide and continue
+                lit++;
+                continue;
+            }
+            else
+            {
+                // If more than one point, subdivide
+                ExtractorNode n1,n2,n3,n4;
+                lit->DivideNode(n1,n2,n3,n4);
+
+                // Add childs if they contain points
+                if(n1.vKeys.size()>0)
+                {
+                    lNodes.push_front(n1);
+                    if(n1.vKeys.size()>1)
+                    {
+                        nToExpand++;
+                        vSizeAndPointerToNode.push_back(make_pair(n1.vKeys.size(),&lNodes.front()));
+                        lNodes.front().lit = lNodes.begin();
+                    }
+                }
+                if(n2.vKeys.size()>0)
+                {
+                    lNodes.push_front(n2);
+                    if(n2.vKeys.size()>1)
+                    {
+                        nToExpand++;
+                        vSizeAndPointerToNode.push_back(make_pair(n2.vKeys.size(),&lNodes.front()));
+                        lNodes.front().lit = lNodes.begin();
+                    }
+                }
+                if(n3.vKeys.size()>0)
+                {
+                    lNodes.push_front(n3);
+                    if(n3.vKeys.size()>1)
+                    {
+                        nToExpand++;
+                        vSizeAndPointerToNode.push_back(make_pair(n3.vKeys.size(),&lNodes.front()));
+                        lNodes.front().lit = lNodes.begin();
+                    }
+                }
+                if(n4.vKeys.size()>0)
+                {
+                    lNodes.push_front(n4);
+                    if(n4.vKeys.size()>1)
+                    {
+                        nToExpand++;
+                        vSizeAndPointerToNode.push_back(make_pair(n4.vKeys.size(),&lNodes.front()));
+                        lNodes.front().lit = lNodes.begin();
+                    }
+                }
+
+                lit=lNodes.erase(lit);
+                continue;
+            }
+        }
+
+        // Finish if there are more nodes than required features
+        // or all nodes contain just one point
+        if((int)lNodes.size()>=N || (int)lNodes.size()==prevSize)
+        {
+            bFinish = true;
+        }
+        else if(((int)lNodes.size()+nToExpand*3)>N)
+        {
+
+            while(!bFinish)
+            {
+
+                prevSize = lNodes.size();
+
+                vector<pair<int,ExtractorNode*> > vPrevSizeAndPointerToNode = vSizeAndPointerToNode;
+                vSizeAndPointerToNode.clear();
+
+                sort(vPrevSizeAndPointerToNode.begin(),vPrevSizeAndPointerToNode.end());
+                for(int j=vPrevSizeAndPointerToNode.size()-1;j>=0;j--)
+                {
+                    ExtractorNode n1,n2,n3,n4;
+                    vPrevSizeAndPointerToNode[j].second->DivideNode(n1,n2,n3,n4);
+
+                    // Add childs if they contain points
+                    if(n1.vKeys.size()>0)
+                    {
+                        lNodes.push_front(n1);
+                        if(n1.vKeys.size()>1)
+                        {
+                            vSizeAndPointerToNode.push_back(make_pair(n1.vKeys.size(),&lNodes.front()));
+                            lNodes.front().lit = lNodes.begin();
+                        }
+                    }
+                    if(n2.vKeys.size()>0)
+                    {
+                        lNodes.push_front(n2);
+                        if(n2.vKeys.size()>1)
+                        {
+                            vSizeAndPointerToNode.push_back(make_pair(n2.vKeys.size(),&lNodes.front()));
+                            lNodes.front().lit = lNodes.begin();
+                        }
+                    }
+                    if(n3.vKeys.size()>0)
+                    {
+                        lNodes.push_front(n3);
+                        if(n3.vKeys.size()>1)
+                        {
+                            vSizeAndPointerToNode.push_back(make_pair(n3.vKeys.size(),&lNodes.front()));
+                            lNodes.front().lit = lNodes.begin();
+                        }
+                    }
+                    if(n4.vKeys.size()>0)
+                    {
+                        lNodes.push_front(n4);
+                        if(n4.vKeys.size()>1)
+                        {
+                            vSizeAndPointerToNode.push_back(make_pair(n4.vKeys.size(),&lNodes.front()));
+                            lNodes.front().lit = lNodes.begin();
+                        }
+                    }
+
+                    lNodes.erase(vPrevSizeAndPointerToNode[j].second->lit);
+
+                    if((int)lNodes.size()>=N)
+                        break;
+                }
+
+                if((int)lNodes.size()>=N || (int)lNodes.size()==prevSize)
+                    bFinish = true;
+
+            }
+        }
+    }
+
+    // Retain the best point in each node
+    vector<cv::KeyPoint> vResultKeys;
+    vResultKeys.reserve(nfeatures);
+    for(list<ExtractorNode>::iterator lit=lNodes.begin(); lit!=lNodes.end(); lit++)
+    {
+        vector<cv::KeyPoint> &vNodeKeys = lit->vKeys;
+        cv::KeyPoint* pKP = &vNodeKeys[0];
+        float maxResponse = pKP->response;
+
+        for(size_t k=1;k<vNodeKeys.size();k++)
+        {
+            if(vNodeKeys[k].response>maxResponse)
+            {
+                pKP = &vNodeKeys[k];
+                maxResponse = vNodeKeys[k].response;
+            }
+        }
+
+        vResultKeys.push_back(*pKP);
+    }
+
+    return vResultKeys;
+}
+
 static int bit_pattern_31_[256*4] =
     {
         8,-3, 9,5/*mean (0), correlation (0)*/,
@@ -401,7 +741,9 @@ void ORBextractor::ComputeKeyPointsOctTree(std::vector<std::vector<cv::KeyPoint>
     }
 
     // TODO compute Orientation
-
+    for (int level = 0; level < nlevels; ++level){
+      computeOrientation(mvImagePyramid[level],allKeypoints[level],umax);
+    }
   }
 }
 
@@ -478,6 +820,53 @@ void ExtractorNode::DivideNode(ExtractorNode &n1, ExtractorNode &n2, ExtractorNo
     n3.bNoMore = true;
   if(n4.vKeys.size()==1)
     n4.bNoMore = true;
+
+}
+
+ORBextractor::ORBextractor(int _nfeatures,
+                           float _scaleFactor,
+                           int _nlevels,
+                           int _iniThFAST,
+                           int _minThFAST):
+                           nfeatures(_nfeatures),scaleFactor(_scaleFactor),nlevels(_nlevels),
+                           iniThFAST(_iniThFAST),minThFAST(_minThFAST){
+
+  // Init scale factor
+  mvScaleFactor.resize(nlevels);
+  // pow of scale factor
+  mvLevelSigma2.resize(nlevels);
+
+  // For the first image the scale is 1
+  mvScaleFactor[0]=1.0f;
+  mvLevelSigma2[0]=1.0f;
+
+  // Compute all layer's scale
+  for(int i=1; i<nlevels; ++i){
+    mvScaleFactor[i]=mvScaleFactor[i-1]*scaleFactor;
+    mvLevelSigma2[i]=mvScaleFactor[i]*scaleFactor;
+  }
+
+  // compute reciprocal
+  mvInvScaleFactor.resize(nlevels);
+  mvInvLevelSigma2.resize(nlevels);
+  for(int i=1; i<nlevels; ++i){
+    mvInvScaleFactor[i]=1.0f/mvScaleFactor[i];
+    mvInvLevelSigma2[i]=1.0f/mvInvLevelSigma2[i];
+  }
+
+  // Init the pyramid vector
+  mvImagePyramid.resize(nlevels);
+
+  // Init the feature vector for every layer
+  mnFeaturesPerLevel.resize(nlevels);
+
+  // the reciprocal of image downsample rate
+  float factor = 1.0f / scaleFactor;
+  // the number of keypoint that first image needs
+  float nDesiredFeaturesPerScale = nfeatures*(1-factor)/(1 - (float)pow((double)factor,(double)nlevels));
+
+  // use for distribute keypoint
+  int sumFeatures = 0;
 
 }
 
