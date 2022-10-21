@@ -823,6 +823,35 @@ void ExtractorNode::DivideNode(ExtractorNode &n1, ExtractorNode &n2, ExtractorNo
 
 }
 
+/**
+ * Compute desc of whole image's keypoint
+ * @param image
+ * @param keypoints
+ * @param descriptors  where to storage
+ * @param pattern      use what pattern to compute
+ */
+static void computeDescriptors(const Mat& image, vector<KeyPoint>& keypoints, Mat& descriptors,
+                               const vector<Point>& pattern){
+  // Clear the vector
+  descriptors = Mat::zeros((int)keypoints.size(),32,CV_8UC1);
+
+  // Traverse the keypoints
+  for(size_t i = 0; i< keypoints.size(); ++i){
+    computeOrbDescriptor(keypoints[i],                // The point
+                         image,
+                         &pattern[0],
+                         descriptors.ptr((int)i)); // The place to storage the desc
+  }
+}
+
+/**
+ * The constructor of ORBextractor. Init the pyramid, ORB compute circular and so on
+ * @param _nfeatures
+ * @param _scaleFactor
+ * @param _nlevels
+ * @param _iniThFAST
+ * @param _minThFAST
+ */
 ORBextractor::ORBextractor(int _nfeatures,
                            float _scaleFactor,
                            int _nlevels,
@@ -867,6 +896,159 @@ ORBextractor::ORBextractor(int _nfeatures,
 
   // use for distribute keypoint
   int sumFeatures = 0;
+  // Compute every layers keypoint except the first
+  for(int level=0; level < nlevels-1; ++level){
+    // Distribute cvRound: return the closest integer
+    mnFeaturesPerLevel[level] = cvRound(nDesiredFeaturesPerScale);
+    // Sum
+    sumFeatures += mnFeaturesPerLevel[level];
+    // Prepare to next layer
+    nDesiredFeaturesPerScale *= factor;
+  }
+  // put the remaining keypoint to the top layer
+  mnFeaturesPerLevel[nlevels-1] = std::max(nfeatures - sumFeatures,0);
+
+  // length of pattern
+  const int npoints = 512;
+  // get index of random sample pattern
+  // Notice that the index style of bit_pattern_31 is int[],but the pattern0 is Point*, so it need force convert
+  const Point* pattern0 = (const Point*)bit_pattern_31_;
+  // To overwrite the pattern data before, use std::back_inserter
+  std::copy(pattern0,pattern0+npoints,std::back_inserter(pattern));
+
+  // This is for orientation
+  // pre-compute the end of a row in a circular path
+  // 1 means the mid row in circular
+  umax.resize(HALF_PATCH_SIZE + 1);
+
+  // The sqrt(2)/2 means the 45 angle of circular
+  int v,v0,vmax = cvFloor(HALF_PATCH_SIZE * sqrt(2.f) / 2 + 1); // max row number
+
+  int vmin = cvCeil(HALF_PATCH_SIZE * sqrt(2.f) / 2);
+
+  const double hp2 = HALF_PATCH_SIZE*HALF_PATCH_SIZE;
+
+  // Use the circular equation calculate umax for every row
+  for (v = 0; v <= vmax; ++v){
+    umax[v] = cvRound(sqrt(hp2 - v*v));
+  }
+
+  // Make sure wo are symmetric
+  for (v = HALF_PATCH_SIZE, v0 = 0; v >= vmin; --v){
+    while (umax[v0] == umax[v0+1])
+      ++v0;
+    umax[v] = v0;
+    ++v0;
+  }
+}
+
+void ORBextractor::operator()(cv::InputArray _image,
+                              cv::InputArray _mask,
+                              std::vector<cv::KeyPoint> &_keypoints,
+                              cv::OutputArray _descriptors) {
+
+  //! Step 1 checking image validity. If the image is empty, then return
+  if(_image.empty())
+    return;
+
+  // Get image
+  Mat image = _image.getMat();
+  // Check the img format. Require single channel gray value
+  assert(image.type() == CV_8UC1);
+
+  // Pre-compute the scale pyramid
+  //! Step 2 build img pyramid
+  ComputePyramid(image);
+
+  //! Step 3 Compute keypoints, homogenized the keypoints
+  // Storage all keypoints.
+  vector<vector<KeyPoint>> allKeypoints;
+  // Distribute the keypoint quadtree
+  ComputeKeyPointsOctTree(allKeypoints);
+
+  //! Step 4 Copy descriptors to new mat
+  Mat descriptors;
+
+  // Get number of keypoints
+  int nkeypoints = 0;
+  // Traverse every level of pyramid, sum the keypoint number
+  for(int level = 0; level < nlevels; ++level)
+    nkeypoints += (int)allKeypoints[level].size();
+
+  // If no keypoint in current image
+  if (nkeypoints == 0)
+    // Force empty the mat of descriptors
+    // https://blog.csdn.net/giantchen547792075/article/details/9107877
+    _descriptors.release();
+  else{
+    // Create the Mat of descriptor, this mat storage whole image descriptors
+    _descriptors.create(nkeypoints,  // Number of rows, is the number of keypoints
+                        32,          // Number of cols TODO WHAT MAEN?
+                        CV_8U);
+    // Get the info of this mat TODO WHY
+    descriptors = _descriptors.getMat();
+  }
+
+  // Resize the keypoint vector
+  _keypoints.clear();
+  _keypoints.reserve(nkeypoints);
+
+  int offset = 0;
+  // Traverse the image of every level
+  for (int level = 0; level < nlevels; ++level){
+    // Get keypoint of this level
+    vector<KeyPoint>& keypoints = allKeypoints[level];
+    // keypoints size
+    int nKeypointLevel = (int)keypoints.size();
+
+    // Check image is empty
+    if(nKeypointLevel == 0)
+      continue;
+
+    // Preprocess the resized image
+    //! Step 5 GaussianBlur the image
+    // Deep copy the iamge
+    Mat workingMat = mvImagePyramid[level].clone();
+
+    // When extract the keypoint, use sharp image. But when calculate the descriptor, use gaussian blur to avoid noise
+    GaussianBlur(workingMat,
+                 workingMat,
+                 Size(7,7),   // Size of gaussian filter
+                 2,                     // The standard deviation of x
+                 2,                     // The standard deviation of y
+                 BORDER_REFLECT_101);
+
+    // Compute the descriptors
+    // Storage descriptors in desc
+    // This is not deep copy, desc could just regard as a segment of descriptors
+    Mat desc = descriptors.rowRange(offset,offset + nKeypointLevel);
+
+    //! Step 6
+    computeDescriptors(workingMat,
+                       keypoints,
+                       desc,
+                       pattern);
+
+    // Update the offset
+    offset += nKeypointLevel;
+
+    // Scale keypoint coordinates
+    // Convert keypoint coordinate form current level to level 0
+    if(level != 0){
+      // Get the scale factor of this level
+      float scale = mvScaleFactor[level];
+      // Traverse keypoint
+      for(vector<KeyPoint>::iterator keypoint = keypoints.begin(),
+          keypointEnd = keypoints.end(); keypoint != keypointEnd; ++keypoint){
+        keypoint->pt *= scale;
+      }
+    }
+
+    // And add the keypoints to the output
+    // keypoint push_back of _keypoints
+    _keypoints.insert(_keypoints.end(),keypoints.begin(),keypoints.end());
+
+  }
 
 }
 
