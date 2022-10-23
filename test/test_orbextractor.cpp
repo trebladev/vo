@@ -1,23 +1,6 @@
-/**
-* This file is part of ORB-SLAM2.
-*
-* Copyright (C) 2014-2016 Raúl Mur-Artal <raulmur at unizar dot es> (University of Zaragoza)
-* For more information see <https://github.com/raulmur/ORB_SLAM2>
-*
-* ORB-SLAM2 is free software: you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation, either version 3 of the License, or
-* (at your option) any later version.
-*
-* ORB-SLAM2 is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with ORB-SLAM2. If not, see <http://www.gnu.org/licenses/>.
-*/
-
+//
+// Created by xuan on 10/23/22.
+//
 #include <iostream>
 #include <algorithm>
 #include <fstream>
@@ -29,6 +12,8 @@
 #include <opencv2/core/core.hpp>
 #include "include/ORBextractor.h"
 #include <librealsense2/rs.hpp>
+
+#include <opencv2/imgproc/imgproc.hpp>
 
 using namespace std;
 void stop_falg_detection();
@@ -113,14 +98,34 @@ int main(int argc, char **argv) try {
 
 //  depth = data.get_depth_frame();
 //  color = data.get_color_frame();
-
+  std::vector<cv::KeyPoint> allkeypoint;
+  cv::Mat alldesc;
   while(1){
     data = pipe.wait_for_frames();
 
     rs2::frame depth = data.get_depth_frame();
     rs2::frame color = data.get_color_frame();
+
+    ORB_SLAM2::ORBextractor* test_extoractor = new ORB_SLAM2::ORBextractor(
+        1000,
+        1.2,
+        8,
+        20,
+        8
+        );
     cv::Mat color_img(cv::Size(depth_width,depth_height), CV_8UC3, (void*)color.get_data(), cv::Mat::AUTO_STEP);
     cv::Mat pic_depth(cv::Size(depth_width,depth_height), CV_16U, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
+
+    cv::cvtColor(color_img,color_img,CV_RGBA2GRAY);
+    (*test_extoractor)(
+        color_img,
+        cv::Mat(),
+        allkeypoint,
+        alldesc
+        );
+
+    std::cout<<"keypoint number"<<allkeypoint.size()<<std::endl;
+
 //    cv::imshow("depth test",pic_depth);
     cv::imshow("color test",color_img);
     cv::waitKey(1);
@@ -181,24 +186,24 @@ int main(int argc, char **argv) try {
 //  SLAM.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
 //
 //  return EXIT_SUCCESS;
-    return 0;
+  return 0;
 
 
 }catch(const rs2::error &e){
-    // Capture device exception
-    std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
-    return EXIT_FAILURE;
+  // Capture device exception
+  std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
+  return EXIT_FAILURE;
 }catch(const std::exception &e){
-    std::cerr<<"Other error : " << e.what() << std::endl;
-    return EXIT_FAILURE;
+  std::cerr<<"Other error : " << e.what() << std::endl;
+  return EXIT_FAILURE;
 }
 
 void stop_falg_detection(){
-    char c;
-    while (!stop_flag) {
-        c = std::getchar();
-        if(c == 'e'){
-            stop_flag = true;;
-        }
+  char c;
+  while (!stop_flag) {
+    c = std::getchar();
+    if(c == 'e'){
+      stop_flag = true;;
     }
+  }
 }

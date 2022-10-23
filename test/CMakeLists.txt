@@ -14,4 +14,13 @@ target_link_libraries(readimg
         ${OpenCV_LIBS}
         ${EIGEN3_LIBS}
         ${Pangolin_LIBRARIES}
+        ${realsense2_LIBRARY}
+        )
+
+add_executable(test_orbex test_orbextractor.cpp ../src/ORBextractor.cpp)
+target_link_libraries(test_orbex
+        ${OpenCV_LIBS}
+        ${EIGEN3_LIBS}
+        ${Pangolin_LIBRARIES}
+        ${realsense2_LIBRARY}
         )
