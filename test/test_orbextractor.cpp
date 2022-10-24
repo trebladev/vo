@@ -13,6 +13,7 @@
 #include "include/ORBextractor.h"
 #include <librealsense2/rs.hpp>
 #include "opencv2/features2d/features2d.hpp"
+#include "Timing.h"
 
 #include <opencv2/imgproc/imgproc.hpp>
 
@@ -102,6 +103,7 @@ int main(int argc, char **argv) try {
   std::vector<cv::KeyPoint> allkeypoint;
   cv::Mat alldesc;
   while(1){
+    TIMER_START(ORB);
     double t_start = cv::getTickCount();
     data = pipe.wait_for_frames();
 
@@ -133,15 +135,16 @@ int main(int argc, char **argv) try {
 
     double t_end = cv::getTickCount();
     double FPS = cv::getTickFrequency()/(t_end-t_start);
+    TIMER_END(ORB);
     cv::Mat fpsPane(35, 155, CV_8UC3);
     fpsPane.setTo(cv::Scalar(153, 119, 76));
     cv::Mat srcRegion = color_img(cv::Rect(8, 8, fpsPane.cols, fpsPane.rows));
     cv::addWeighted(srcRegion, 0.4, fpsPane, 0.6, 0, srcRegion);
     std::stringstream fpsSs;
-    fpsSs << "FPS: " << FPS;
+    fpsSs << "FPS: " << (int)FPS;
     cv::putText(color_img, fpsSs.str(), cv::Point(16, 32),
-                cv::FONT_HERSHEY_COMPLEX, 0.8, cv::Scalar(0, 0, 255));
-    cout<<"FPS:"<<FPS<<endl;
+                cv::FONT_HERSHEY_DUPLEX, 0.8, cv::Scalar(0, 255, 0),2);
+//    cout<<"FPS:"<<FPS<<endl;
     cv::imshow("color test",color_img);
     cv::waitKey(1);
     cv::imshow("depth test",pic_depth);

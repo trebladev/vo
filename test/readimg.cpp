@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <fstream>
 #include <chrono>
+#include "Timing.h"
 #include <atomic>
 #include <thread>
 
