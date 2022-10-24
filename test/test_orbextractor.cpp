@@ -12,6 +12,7 @@
 #include <opencv2/core/core.hpp>
 #include "include/ORBextractor.h"
 #include <librealsense2/rs.hpp>
+#include "opencv2/features2d/features2d.hpp"
 
 #include <opencv2/imgproc/imgproc.hpp>
 
@@ -44,9 +45,9 @@ int main(int argc, char **argv) try {
   rs2::config cfg;
   // Default it will config all the devices，you can specify the device index you want to config (query by serial number)
   // Config color stream: 640*480, frame format: BGR, FPS: 30
-  cfg.enable_stream(RS2_STREAM_COLOR,640, 480, RS2_FORMAT_BGR8, 30);  // BGR8 correspond to CV_8UC3 in OpenCV
+  cfg.enable_stream(RS2_STREAM_COLOR,640, 480, RS2_FORMAT_BGR8, 60);  // BGR8 correspond to CV_8UC3 in OpenCV
   // Config depth stream: 640*480, frame format: Z16, FPS: 30
-  cfg.enable_stream(RS2_STREAM_DEPTH, 640, 480, RS2_FORMAT_Z16, 30); // Z16 corresponds to CV_16U in OpenCV
+  cfg.enable_stream(RS2_STREAM_DEPTH, 640, 480, RS2_FORMAT_Z16, 60); // Z16 corresponds to CV_16U in OpenCV
 
   std::cout << "Config RGB frame format to 8-channal RGB" << std::endl;
   std::cout << "Config RGB and depth FPS to 30" << std::endl;
@@ -101,6 +102,7 @@ int main(int argc, char **argv) try {
   std::vector<cv::KeyPoint> allkeypoint;
   cv::Mat alldesc;
   while(1){
+    double t_start = cv::getTickCount();
     data = pipe.wait_for_frames();
 
     rs2::frame depth = data.get_depth_frame();
@@ -124,9 +126,22 @@ int main(int argc, char **argv) try {
         alldesc
         );
 
-    std::cout<<"keypoint number"<<allkeypoint.size()<<std::endl;
+////    std::cout<<"keypoint number"<<allkeypoint.size()<<std::endl;
 
+    cv::drawKeypoints(color_img,allkeypoint,color_img);
 //    cv::imshow("depth test",pic_depth);
+
+    double t_end = cv::getTickCount();
+    double FPS = cv::getTickFrequency()/(t_end-t_start);
+    cv::Mat fpsPane(35, 155, CV_8UC3);
+    fpsPane.setTo(cv::Scalar(153, 119, 76));
+    cv::Mat srcRegion = color_img(cv::Rect(8, 8, fpsPane.cols, fpsPane.rows));
+    cv::addWeighted(srcRegion, 0.4, fpsPane, 0.6, 0, srcRegion);
+    std::stringstream fpsSs;
+    fpsSs << "FPS: " << FPS;
+    cv::putText(color_img, fpsSs.str(), cv::Point(16, 32),
+                cv::FONT_HERSHEY_COMPLEX, 0.8, cv::Scalar(0, 0, 255));
+    cout<<"FPS:"<<FPS<<endl;
     cv::imshow("color test",color_img);
     cv::waitKey(1);
     cv::imshow("depth test",pic_depth);

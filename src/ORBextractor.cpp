@@ -721,7 +721,7 @@ void ORBextractor::ComputeKeyPointsOctTree(std::vector<std::vector<cv::KeyPoint>
     // TODO the points coordinate is at radius expend but the border's coordinate is at edge expend. waiting for solving this bug
     keypoints = DistributeOctTree(vToDistributeKeys,                 // keypoint for this level, waiting for distribute
                                   minBorderX,maxBorderX,  // range of this camera
-                                  minBorderY,minBorderY,
+                                  minBorderY,maxBorderY,
                                   mnFeaturesPerLevel[level], // Expectation number of keypoint
                                   level);                            // level of this layer
     // PATCH_SIZE means the last level, so it needs scale
@@ -897,7 +897,7 @@ ORBextractor::ORBextractor(int _nfeatures,
   // use for distribute keypoint
   int sumFeatures = 0;
   // Compute every layers keypoint except the first
-  for(int level=0; level < nlevels-1; ++level){
+  for(int level=0; level < nlevels-1; level++ ){
     // Distribute cvRound: return the closest integer
     mnFeaturesPerLevel[level] = cvRound(nDesiredFeaturesPerScale);
     // Sum
