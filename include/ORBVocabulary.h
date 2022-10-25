@@ -1,0 +1,9 @@
+//
+// Created by xuan on 10/25/22.
+//
+
+#ifndef VO_INCLUDE_ORBVOCABULARY_H_
+#define VO_INCLUDE_ORBVOCABULARY_H_
+
+
+#endif //VO_INCLUDE_ORBVOCABULARY_H_
