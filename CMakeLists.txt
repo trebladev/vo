@@ -42,7 +42,8 @@ include_directories(
 )
 
 add_library(${PROJECT_NAME} SHARED
-        src/ORBextractor.cpp)
+        src/ORBextractor.cpp
+        src/Frame.cpp)
 
 target_link_libraries(${PROJECT_NAME}
         ${OpenCV_LIBS}

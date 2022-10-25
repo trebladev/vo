@@ -14,6 +14,7 @@ target_link_libraries(readimg
         ${OpenCV_LIBS}
         ${EIGEN3_LIBS}
         ${Pangolin_LIBRARIES}
+        ${PROJECT_NAME}
         ${realsense2_LIBRARY}
         )
 
@@ -23,4 +24,5 @@ target_link_libraries(test_orbex
         ${EIGEN3_LIBS}
         ${Pangolin_LIBRARIES}
         ${realsense2_LIBRARY}
+        ${PROJECT_NAME}
         )
