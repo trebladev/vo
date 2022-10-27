@@ -43,7 +43,15 @@ include_directories(
 
 add_library(${PROJECT_NAME} SHARED
         src/ORBextractor.cpp
-        src/Frame.cpp)
+        src/Frame.cpp
+        src/ORBmatcher.cpp
+        src/KeyFrame.cpp
+        src/KeyFrameDatabase.cpp
+        src/MapPoint.cpp
+        src/Map.cpp
+        src/Converter.cpp)
+
+
 
 target_link_libraries(${PROJECT_NAME}
         ${OpenCV_LIBS}
