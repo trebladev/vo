@@ -28,123 +28,178 @@
 #include<opencv2/core/core.hpp>
 #include<mutex>
 
-namespace ORB_SLAM2
-{
+namespace ORB_SLAM2 {
 
 class KeyFrame;
 class Map;
 class Frame;
 
+/**
+ * @brief The class is of every mappoint
+ */
+class MapPoint {
+ public:
 
-class MapPoint
-{
-public:
-    MapPoint(const cv::Mat &Pos, KeyFrame* pRefKF, Map* pMap);
-    MapPoint(const cv::Mat &Pos,  Map* pMap, Frame* pFrame, const int &idxF);
+  /**
+   * @brief Construct mappoint by keyframe and coordinate
+   * @details This construct function was cited in StereoInitialization(). LocalMapping::CreateNewMapPoints()
+   * Monocular CreateInitialMapMonocular(). LocalMapping::CreateNeMapPoints()
+   * @param Pos
+   * @param pRefKF
+   * @param pMap
+   */
+  MapPoint(const cv::Mat &Pos, KeyFrame *pRefKF, Map *pMap);
+  /**
+   * @brief Construct mappoint by frame and coordinate
+   * @details This construct function was used in Stereo UpdateLastFrame()
+   * @param Pos
+   * @param pMap
+   * @param pFrame
+   * @param idxF
+   */
+  MapPoint(const cv::Mat &Pos, Map *pMap, Frame *pFrame, const int &idxF);
 
-    void SetWorldPos(const cv::Mat &Pos);
-    cv::Mat GetWorldPos();
+  void SetWorldPos(const cv::Mat &Pos);
+  cv::Mat GetWorldPos();
 
-    cv::Mat GetNormal();
-    KeyFrame* GetReferenceKeyFrame();
+  cv::Mat GetNormal();
+  KeyFrame *GetReferenceKeyFrame();
 
-    std::map<KeyFrame*,size_t> GetObservations();
-    int Observations();
+  /**
+   * @brief Get frame which observe this mappoint
+   * @return Return the keyframe and the point's index in keyframe
+   */
+  std::map<KeyFrame *, size_t> GetObservations();
 
-    void AddObservation(KeyFrame* pKF,size_t idx);
-    void EraseObservation(KeyFrame* pKF);
+  /**
+   * @brief Get observations of this mappoint
+   * @return
+   */
+  int Observations();
 
-    int GetIndexInKeyFrame(KeyFrame* pKF);
-    bool IsInKeyFrame(KeyFrame* pKF);
+  void AddObservation(KeyFrame *pKF, size_t idx);
+  void EraseObservation(KeyFrame *pKF);
 
-    void SetBadFlag();
-    bool isBad();
+  int GetIndexInKeyFrame(KeyFrame *pKF);
+  bool IsInKeyFrame(KeyFrame *pKF);
 
-    void Replace(MapPoint* pMP);    
-    MapPoint* GetReplaced();
+  void SetBadFlag();
+  bool isBad();
 
-    void IncreaseVisible(int n=1);
-    void IncreaseFound(int n=1);
-    float GetFoundRatio();
-    inline int GetFound(){
-        return mnFound;
-    }
+  void Replace(MapPoint *pMP);
+  MapPoint *GetReplaced();
 
-    void ComputeDistinctiveDescriptors();
+  /**
+   * @brief Increase visible
+   * @details This mappoint can be observed but can not match successfully
+   * @param n
+   */
+  void IncreaseVisible(int n = 1);
+  /**
+   * @brief Increase found
+   * @param n
+   */
+  void IncreaseFound(int n = 1);
 
-    cv::Mat GetDescriptor();
+  /**
+   * @brief Found / visible
+   * @return
+   */
+  float GetFoundRatio();
+  inline int GetFound() {
+    return mnFound;
+  }
 
-    void UpdateNormalAndDepth();
+  /**
+   * @brief Compute the representative descriptors
+   */
+  void ComputeDistinctiveDescriptors();
 
-    float GetMinDistanceInvariance();
-    float GetMaxDistanceInvariance();
-    int PredictScale(const float &currentDist, KeyFrame*pKF);
-    int PredictScale(const float &currentDist, Frame* pF);
+  cv::Mat GetDescriptor();
 
-public:
-    long unsigned int mnId;
-    static long unsigned int nNextId;
-    long int mnFirstKFid;
-    long int mnFirstFrame;
-    int nObs;
+  void UpdateNormalAndDepth();
 
-    // Variables used by the tracking
-    float mTrackProjX;
-    float mTrackProjY;
-    float mTrackProjXR;
-    bool mbTrackInView;
-    int mnTrackScaleLevel;
-    float mTrackViewCos;
-    long unsigned int mnTrackReferenceForFrame;
-    long unsigned int mnLastFrameSeen;
+  float GetMinDistanceInvariance();
+  float GetMaxDistanceInvariance();
+  int PredictScale(const float &currentDist, KeyFrame *pKF);
+  int PredictScale(const float &currentDist, Frame *pF);
 
-    // Variables used by local mapping
-    long unsigned int mnBALocalForKF;
-    long unsigned int mnFuseCandidateForKF;
+ public:
+  long unsigned int mnId;            // Global ID of Mappoint
+  static long unsigned int nNextId;
+  long int mnFirstKFid;              // ID for keyframe which create this mappoint
+  long int mnFirstFrame;             // ID for frame which create this mappoint
 
-    // Variables used by loop closing
-    long unsigned int mnLoopPointForKF;
-    long unsigned int mnCorrectedByKF;
-    long unsigned int mnCorrectedReference;    
-    cv::Mat mPosGBA;
-    long unsigned int mnBAGlobalForKF;
+  // Number of observation, monocular:+1, stereo&RGB-D:+2
+  int nObs;
 
+  // Variables used by the tracking
+  // This mappoint's coordinate when project into one frame X,Y and X in right image
+  float mTrackProjX;
+  float mTrackProjY;
+  float mTrackProjXR;
 
-    static std::mutex mGlobalMutex;
+  // Need track
+  bool mbTrackInView;
+  int mnTrackScaleLevel; // Tracking scale
+  float mTrackViewCos;   // The camera FOV when tracked
+  long unsigned int mnTrackReferenceForFrame;
+  long unsigned int mnLastFrameSeen;
 
-protected:    
+  // Variables used by local mapping
+  // Marked the mappoint for avoid repeat option.
+  long unsigned int mnBALocalForKF;
+  long unsigned int mnFuseCandidateForKF;
 
-     // Position in absolute coordinates
-     cv::Mat mWorldPos;
+  // Variables used by loop closing
+  // Marked the mappoint for avoid repeat option.
+  long unsigned int mnLoopPointForKF;
+  long unsigned int mnCorrectedByKF;
+  long unsigned int mnCorrectedReference;
 
-     // Keyframes observing the point and associated index in keyframe
-     std::map<KeyFrame*,size_t> mObservations;
+  // The pose after global BA.
+  cv::Mat mPosGBA;
+  // Record which keyframe cause global BA.
+  long unsigned int mnBAGlobalForKF;
 
-     // Mean viewing direction
-     cv::Mat mNormalVector;
+  // A lock
+  static std::mutex mGlobalMutex;
 
-     // Best descriptor to fast matching
-     cv::Mat mDescriptor;
+ protected:
 
-     // Reference KeyFrame
-     KeyFrame* mpRefKF;
+  // Position in absolute coordinates i.e. global coordinate
+  cv::Mat mWorldPos;
 
-     // Tracking counters
-     int mnVisible;
-     int mnFound;
+  // Keyframes observing the point and associated index in keyframe
+  std::map<KeyFrame *, size_t> mObservations;
 
-     // Bad flag (we do not currently erase MapPoint from memory)
-     bool mbBad;
-     MapPoint* mpReplaced;
+  // Mean viewing direction
+  cv::Mat mNormalVector;
 
-     // Scale invariance distances
-     float mfMinDistance;
-     float mfMaxDistance;
+  // Best descriptor to fast matching
+  cv::Mat mDescriptor;
 
-     Map* mpMap;
+  // Reference KeyFrame
+  KeyFrame *mpRefKF;
 
-     std::mutex mMutexPos;
-     std::mutex mMutexFeatures;
+  // Tracking counters
+  int mnVisible;
+  int mnFound;
+
+  // Bad flag (we do not currently erase MapPoint from memory)
+  bool mbBad;
+  MapPoint *mpReplaced;
+
+  // Scale invariance distances
+  float mfMinDistance;
+  float mfMaxDistance;
+
+  Map *mpMap;
+
+  // A lock for pose option.
+  std::mutex mMutexPos;
+  // A lock for feature option.
+  std::mutex mMutexFeatures;
 };
 
 } //namespace ORB_SLAM
