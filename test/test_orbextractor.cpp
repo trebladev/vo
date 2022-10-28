@@ -102,6 +102,15 @@ int main(int argc, char **argv) try {
 //  color = data.get_color_frame();
   std::vector<cv::KeyPoint> allkeypoint;
   cv::Mat alldesc;
+
+  ORB_SLAM2::ORBextractor* test_extoractor = new ORB_SLAM2::ORBextractor(
+      1000,
+      1.2,
+      8,
+      20,
+      8
+  );
+
   while(1){
     TIMER_START(ORB);
     double t_start = cv::getTickCount();
@@ -110,13 +119,7 @@ int main(int argc, char **argv) try {
     rs2::frame depth = data.get_depth_frame();
     rs2::frame color = data.get_color_frame();
 
-    ORB_SLAM2::ORBextractor* test_extoractor = new ORB_SLAM2::ORBextractor(
-        1000,
-        1.2,
-        8,
-        20,
-        8
-        );
+
     cv::Mat color_img(cv::Size(depth_width,depth_height), CV_8UC3, (void*)color.get_data(), cv::Mat::AUTO_STEP);
     cv::Mat pic_depth(cv::Size(depth_width,depth_height), CV_16U, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
 
@@ -147,8 +150,8 @@ int main(int argc, char **argv) try {
 //    cout<<"FPS:"<<FPS<<endl;
     cv::imshow("color test",color_img);
     cv::waitKey(1);
-    cv::imshow("depth test",pic_depth);
-    cv::waitKey(1);
+//    cv::imshow("depth test",pic_depth);
+//    cv::waitKey(1);
   }
 
 //  // Create SLAM system. It initializes all system threads and gets ready to process frames.
