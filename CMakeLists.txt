@@ -49,7 +49,8 @@ add_library(${PROJECT_NAME} SHARED
         src/KeyFrameDatabase.cpp
         src/MapPoint.cpp
         src/Map.cpp
-        src/Converter.cpp)
+        src/Converter.cpp
+        src/realsense2.cpp)
 
 
 

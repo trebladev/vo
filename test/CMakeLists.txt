@@ -26,3 +26,12 @@ target_link_libraries(test_orbex
         ${realsense2_LIBRARY}
         ${PROJECT_NAME}
         )
+
+add_executable(test_f2f_track test_f2f_track.cpp)
+target_link_libraries(test_f2f_track
+        ${OpenCV_LIBS}
+        ${EIGEN3_LIBS}
+        ${Pangolin_LIBRARIES}
+        ${realsense2_LIBRARY}
+        ${PROJECT_NAME}
+        )
