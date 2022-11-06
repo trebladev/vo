@@ -50,7 +50,12 @@ add_library(${PROJECT_NAME} SHARED
         src/MapPoint.cpp
         src/Map.cpp
         src/Converter.cpp
-        src/realsense2.cpp)
+        src/realsense2.cpp
+        # src/Tracking.cpp
+        src/MapDrawer.cpp
+        src/FrameDrawer.cpp
+        src/Tracking_self.cpp
+        src/Optimizer.cpp)
 
 
 

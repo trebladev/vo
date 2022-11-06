@@ -15,9 +15,11 @@
 #include "include/ORBextractor.h"
 #include <librealsense2/rs.hpp>
 #include "opencv2/features2d/features2d.hpp"
+#include "ORBVocabulary.h"
 #include "Timing.h"
 #include "Frame.h"
 #include "KeyFrame.h"
+#include "FrameDrawer.h"
 #include "Map.h"
 #include "realsense2.h"
 #include <opencv2/imgproc/imgproc.hpp>
@@ -34,24 +36,41 @@ std::atomic_bool stop_flag(false);
 
 int main(int argc, char **argv) try {
 
-//  if(argc != 3){
-//      cerr << endl << "Usage: ./rgbd_realsense path_to_vocabulary path_to_settings" << endl;
-//      return EXIT_SUCCESS;
-//  }
+  std::string strSettingsFile = "./test.yaml";
 
   rs2::pipeline pipe = start_d435i(IMAGE_WIDTH,IMAGE_HEIGHT,FPS,true);
   rs2::frameset data;
 
-  std::vector<cv::KeyPoint> allkeypoint;
-  cv::Mat alldesc;
+  // Load vocabulary
+  ORB_SLAM2::ORBVocabulary* Vocabulary = new ORB_SLAM2::ORBVocabulary();
+  bool bvocload = Vocabulary->loadFromTextFile("./Vocabulary/ORBvoc.txt");
+  if(!bvocload){
+    cerr<< "Wrong path to vocabulary \n";
+    exit(-1);
+  }
+  cout<< "Load vocabulary successful\n";
 
-  ORB_SLAM2::ORBextractor* test_extoractor = new ORB_SLAM2::ORBextractor(
-      1000,
-      1.2,
-      8,
-      20,
-      8
-  );
+  // The code is used in system.h
+  // Create KeyFrame Database
+  ORB_SLAM2::KeyFrameDatabase* KeyFrameDatabase = new ORB_SLAM2::KeyFrameDatabase(*Vocabulary);
+
+  // Create the Map
+  ORB_SLAM2::Map* Map = new ORB_SLAM2::Map();
+
+  //Create Drawers. These are used by the Viewer
+  ORB_SLAM2::FrameDrawer* mpFrameDrawer = new ORB_SLAM2::FrameDrawer(Map);
+  ORB_SLAM2::MapDrawer* MapDrawer = new ORB_SLAM2::MapDrawer(Map, strSettingsFile);
+
+  // Init Tracking
+  ORB_SLAM2::Tracking* Tracking = new ORB_SLAM2::Tracking(Vocabulary,
+                                                          mpFrameDrawer,
+                                                          MapDrawer,
+                                                          Map,
+                                                          KeyFrameDatabase,
+                                                          pipe,
+                                                          2);
+
+  std::cout<< "Init Tracking successful !\n";
 
   while(1){
     data = pipe.wait_for_frames();
@@ -61,17 +80,6 @@ int main(int argc, char **argv) try {
 
 
     cv::Mat color_img(cv::Size(IMAGE_WIDTH,IMAGE_HEIGHT), CV_8UC3, (void*)color.get_data(), cv::Mat::AUTO_STEP);
-    cv::Mat pic_depth(cv::Size(IMAGE_WIDTH,IMAGE_HEIGHT), CV_16U, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
-
-    cv::cvtColor(color_img,color_img,CV_RGBA2GRAY);
-    (*test_extoractor)(
-        color_img,
-        cv::Mat(),
-        allkeypoint,
-        alldesc
-        );
-
-    cv::drawKeypoints(color_img,allkeypoint,color_img);
 
     cv::imshow("color test",color_img);
     cv::waitKey(1);
